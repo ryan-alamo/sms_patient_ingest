@@ -19,7 +19,7 @@ class DataformTransformer:
     def write_chunks(self, df: DataFrame, chunks: int) -> None:
         dfs_chunked = np.array_split(df, chunks)
         for i, df_chunk in enumerate(dfs_chunked):
-            df_chunk.to_csv(f"../output/gc_patient_demo_{self.file_suffix}_part{i + 1}.csv", index=False, na_rep="")
+            df_chunk.to_csv(f"output/gc_patient_demo_{self.file_suffix}_part{i + 1}.csv", index=False, na_rep="")
 
     def remove_bad_rows(self, original_df: DataFrame, invalid_rows_df: DataFrame, on_str: Optional[str]) -> DataFrame:
         df = original_df[~original_df['mrn'].isin(invalid_rows_df['mrn'])]
@@ -73,7 +73,7 @@ class DataformTransformer:
         # TODO if default value then set it 
 
         print(f"Nulls in {category} has {len(null_df)} instances")
-        null_df.to_csv(f"../output/gc_nulls_{category}_{self.file_suffix}.csv")
+        null_df.to_csv(f"output/gc_nulls_{category}_{self.file_suffix}.csv")
         return null_df
 
     def write_duplicate_df(self, original_df: DataFrame, category: str, unique_columns: list[str], exclude_nulls: bool) -> DataFrame:
@@ -83,7 +83,7 @@ class DataformTransformer:
 
         print(f"Duplicate {category} has {len(duplicate_df)} instances")
         duplicate_df = duplicate_df.sort_values(by=unique_columns)
-        duplicate_df.to_csv(f"../output/gc_duplicates_{category}_{self.file_suffix}.csv")
+        duplicate_df.to_csv(f"output/gc_duplicates_{category}_{self.file_suffix}.csv")
         return duplicate_df
 
     def merge(self, original_df: DataFrame, merge_on: str, combine_columns: list[str]):
