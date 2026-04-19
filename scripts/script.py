@@ -1,4 +1,5 @@
 import csv
+import glob
 import os.path
 from itertools import combinations
 from typing import Optional
@@ -16,6 +17,7 @@ from scripts.schema import make_raw_schema
 
 practice_code_to_wave = {
     "ASF":	"5a",
+    "AS2": "5a",
     "CCSF":	"2a",
     "CSU":	"4",
     "EAST":	"2a",
@@ -44,10 +46,11 @@ practice_code_to_wave = {
     "EU12": "5b",
     "ORR":	"3",
     "PKU":	"5a",
+    "PK2": "5a",
     "PBU": "5c",
     "RAF":	"3",
     "RHF":	"3",
-    "RFU": "5c",
+    "RFU": "5a",
     "VUP": "5a",
     "SAF":	"3",
     "SDH":	"1",
@@ -106,7 +109,7 @@ default_firstname = "UNKNOWN_FIRST_NAME"
 
 VALID_WAVES = ["5a", "5b", "5c", "5d"]
 WAVE_PRIORITY = {"5a": 0, "5b": 1, "5c": 2, "5d": 3}
-RAW_PATIENT_DEMOGRAPHIC_FILE_PATH = f"REPALCEME" # initial: raw_data/oo_candid_patient_extract_20260406_202604060941_00000.csv
+RAW_PATIENT_DEMOGRAPHIC_FILE_PATH = f"raw_data/oo_candid_patient_extract_20260411_202604110958_00000.csv" # initial: raw_data/oo_candid_patient_extract_20260406_202604060941_00000.csv
 SAMPLE_ENTRIES_FILE_NAME = f"sample_file.csv"
 RAW_WITH_REASON_FILE = "output/raw_with_reason.csv"
 TRANSFORMED_FILE = "output/transformed.csv"
@@ -126,6 +129,7 @@ def transform_patient_df(patient_demo_df: pandas.DataFrame, data_transformer: Da
         pd.to_datetime(default_birthdate)
     )
 
+    patient_demo_df["patientLastModifiedStamp"] = patient_demo_df["patientLastModifiedStamp"].str.split("-").str[0]
     patient_demo_df = data_transformer.transform_dates(
         patient_demo_df,
         [
@@ -140,6 +144,7 @@ def transform_patient_df(patient_demo_df: pandas.DataFrame, data_transformer: Da
             "secondaryCoverageInsurancePeriodEndDate",
             "tertiaryCoverageInsurancePeriodEndDate",
             "last_service_date",
+            "patientLastModifiedStamp",
         ],
     )
     patient_demo_df = patient_demo_df.sort_values(
@@ -180,6 +185,20 @@ def validate_df(raw_df: pandas.DataFrame, data_transformer: DataformTransformer)
     return patient_demo_df, raw_df
 
     
+def build_provider_fax_lookup():
+    provider_files = glob.glob("raw_data/providers/*_ReferringDoctorByPractice.xlsx")
+    all_providers = []
+    for f in provider_files:
+        df = pd.read_excel(f, dtype=str, usecols=["NPI", "Fax Number"])
+        all_providers.append(df)
+    if not all_providers:
+        return {}
+    providers = pd.concat(all_providers, ignore_index=True)
+    providers = providers.dropna(subset=["NPI", "Fax Number"])
+    providers = providers.drop_duplicates(subset=["NPI"])
+    return dict(zip(providers["NPI"], providers["Fax Number"]))
+
+
 def transform_ingest_file():
     with open(
         RAW_PATIENT_DEMOGRAPHIC_FILE_PATH, "r", encoding="utf-8", errors="ignore"
@@ -203,6 +222,15 @@ def transform_ingest_file():
     ].index
     
     patient_demo_df = patient_demo_df.drop(failed_indices, errors='ignore')
+
+    fax_lookup = build_provider_fax_lookup()
+    wave5_mask = patient_demo_df["wave"].isin(VALID_WAVES)
+    missing_fax = patient_demo_df["referringProviderFax"].isna() | (patient_demo_df["referringProviderFax"] == "")
+    has_npi = patient_demo_df["referringProviderNpi"].notna() & (patient_demo_df["referringProviderNpi"] != "")
+    fill_mask = wave5_mask & missing_fax & has_npi
+    patient_demo_df.loc[fill_mask, "referringProviderFax"] = patient_demo_df.loc[fill_mask, "referringProviderNpi"].map(fax_lookup)
+    print(f"Filled {fill_mask.sum() - patient_demo_df.loc[fill_mask, 'referringProviderFax'].isna().sum()} referring provider fax numbers from provider files")
+
     patient_demo_df = data_transformer.merge(
         patient_demo_df,
         "mrn",
@@ -214,6 +242,7 @@ def transform_ingest_file():
             "attendingProviderLastName",
             "attendingProviderMiddleName",
             "attendingProviderPhone",
+            "attendingProviderFax",
             "attendingProviderAddressLine1",
             "attendingProviderAddressLine2",
             "attendingProviderCity",
@@ -225,6 +254,7 @@ def transform_ingest_file():
             "referringProviderLastName",
             "referringProviderMiddleName",
             "referringProviderPhone",
+            "referringProviderFax",
             "referringProviderAddressLine1",
             "referringProviderAddressLine2",
             "referringProviderCity",
@@ -236,6 +266,7 @@ def transform_ingest_file():
             "primaryProviderLastName",
             "primaryProviderMiddleName",
             "primaryProviderPhone",
+            "primaryProviderFax",
             "primaryProviderAddressLine1",
             "primaryProviderAddressLine2",
             "primaryProviderCity",
