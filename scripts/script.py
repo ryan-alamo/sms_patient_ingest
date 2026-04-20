@@ -113,7 +113,7 @@ RAW_PATIENT_DEMOGRAPHIC_FILE_PATH = f"raw_data/oo_candid_patient_extract_2026041
 SAMPLE_ENTRIES_FILE_NAME = f"sample_file.csv"
 RAW_WITH_REASON_FILE = "output/raw_with_reason.csv"
 TRANSFORMED_FILE = "output/transformed.csv"
-INGEST_DATE = "04_17" # REPLACEME
+INGEST_DATE = "04_20" # REPLACEME
 
 
 def test_ingestion():
