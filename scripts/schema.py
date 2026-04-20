@@ -368,8 +368,8 @@ TRANSFORMED_SCHEMA = [
         "type": "DATE",
     },
     {"mode": "NULLABLE", "name": "patientCreateStamp", "type": "STRING"},
+    {"mode": "NULLABLE", "name": "patientLastModifiedStamp", "type": "DATE"},
     {"mode": "NULLABLE", "name": "patientRecordStatus", "type": "STRING"},
-    
     {"mode": "NULLABLE", "name": "duplicatePatientMRN", "type": "STRING"},
     {"mode": "NULLABLE", "name": "deactivationNote", "type": "STRING"},
     {"mode": "NULLABLE", "name": "deactivationDate", "type": "STRING"},

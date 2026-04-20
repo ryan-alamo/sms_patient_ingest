@@ -1,4 +1,5 @@
 import csv
+import glob
 import os.path
 from itertools import combinations
 from typing import Optional
@@ -8,52 +9,71 @@ import networkx as nx
 import pandas
 import pandas as pd
 
-from scripts.DataformTransformer import DataformTransformer
+from scripts.DataTransformer import DataformTransformer
 from scripts.bigquery_loader import upload_to_bigquery
 from scripts.schema import TRANSFORMED_SCHEMA, RAW_SCHEMA
 from scripts.schema import make_raw_schema
 # 746,721 782957
 
 practice_code_to_wave = {
-    "ASF":	"5",
+    "ASF":	"5a",
+    "AS2": "5a",
     "CCSF":	"2a",
     "CSU":	"4",
     "EAST":	"2a",
     "EBF":	"3",
-    "FBU":	"4",
+    "EU5": "5c",
+    "EUP": "5c",
+    "FBU":	"5b",
     "FCW":	"2b",
     "FNW":	"2c",
     "FUP":	"4",
-    "FYC":	"5",
+    "FYC":	"5c",
+    "BUR3": "5c",
+    "BURC": "5c",
     "H01":	"1",
     "H03":	"1",
     "H06":	"1",
     "HNA":	"3",
     "HNF":	"3",
-    "JPUF":	"5",
+    "JPUF":	"5c",
     "JRO":	"2a",
     "KSF":	"3",
-    "MFU":	"5",
+    "MFU":	"5c",
+    "MUF": "5b",
+    "EU2": "5b",
+    "EU11": "5b",
+    "EU12": "5b",
     "ORR":	"3",
-    "PKU":	"5",
+    "PKU":	"5a",
+    "PK2": "5a",
+    "PBU": "5c",
     "RAF":	"3",
     "RHF":	"3",
+    "RFU": "5a",
+    "VUP": "5a",
     "SAF":	"3",
     "SDH":	"1",
     "SFRO":	"2a",
-    "U02":	"5",
+    "U02":	"5c",
     "U03":	"4",
-    "U04":	"5",
-    "U07":	"5",
-    "U08":	"5",
-    "U12":	"5",
-    "U15":	"5",
-    "U19":	"5",
-    "U21":	"5",
-    "U22":	"4",
-    "U23":	"5",
+    "U04":	"5b",
+    "U07":	"5b",
+    "U08":	"5a",
+    "U12":	"5d",
+    "U15":	"5d",
+    "U19":	"5d",
+    "U21":	"5c",
+    "U22":	"5b",
+    "U23":	"5a",
     "U26":	"4",
     "U27":	"4",
+    "U29": "5c",
+    "U30": "5c",
+    "U31": "5c",
+    "U47": "5c",
+    "U48": "5d",
+    "U50": "5d",
     "USF":	"4",
     "WEST":	"2b",
     "WUF":	"4",
@@ -69,6 +89,17 @@ def set_wave(practiceCode: str):
         return practice_code_to_wave[str(practiceCode)]
     else:
         return "unknown wave"
+
+
+def get_priority_wave(practice_codes):
+    if isinstance(practice_codes, list):
+        waves = [set_wave(pc) for pc in practice_codes]
+    else:
+        waves = [set_wave(practice_codes)]
+    valid = [w for w in waves if w in WAVE_PRIORITY]
+    if not valid:
+        return "unknown wave"
+    return min(valid, key=lambda w: WAVE_PRIORITY[w])
     
 
 # export const DEFAULT_VALUE_MAPPING = {
@@ -76,12 +107,13 @@ default_birthdate = "1900-01-01"
 default_lastname = "UNKNOWN_LAST_NAME"
 default_firstname = "UNKNOWN_FIRST_NAME"
 
-VALID_WAVES = ["1", "2", "2a", "2b", "2c", "3", "4"]
-RAW_PATIENT_DEMOGRAPHIC_FILE_PATH = f"../raw_data/patient_extract.csv"
+VALID_WAVES = ["5a", "5b", "5c", "5d"]
+WAVE_PRIORITY = {"5a": 0, "5b": 1, "5c": 2, "5d": 3}
+RAW_PATIENT_DEMOGRAPHIC_FILE_PATH = f"raw_data/oo_candid_patient_extract_20260411_202604110958_00000.csv" # initial: raw_data/oo_candid_patient_extract_20260406_202604060941_00000.csv
 SAMPLE_ENTRIES_FILE_NAME = f"sample_file.csv"
-RAW_WITH_REASON_FILE = "../output/raw_with_reason.csv"
-TRANSFORMED_FILE = "../output/transformed.csv"
-INGEST_DATE = "03_27"
+RAW_WITH_REASON_FILE = "output/raw_with_reason.csv"
+TRANSFORMED_FILE = "output/transformed.csv"
+INGEST_DATE = "04_20" # REPLACEME
 
 
 def test_ingestion():
@@ -97,6 +129,7 @@ def transform_patient_df(patient_demo_df: pandas.DataFrame, data_transformer: Da
         pd.to_datetime(default_birthdate)
     )
 
+    patient_demo_df["patientLastModifiedStamp"] = patient_demo_df["patientLastModifiedStamp"].str.split("-").str[0]
     patient_demo_df = data_transformer.transform_dates(
         patient_demo_df,
         [
@@ -111,6 +144,7 @@ def transform_patient_df(patient_demo_df: pandas.DataFrame, data_transformer: Da
             "secondaryCoverageInsurancePeriodEndDate",
             "tertiaryCoverageInsurancePeriodEndDate",
             "last_service_date",
+            "patientLastModifiedStamp",
         ],
     )
     patient_demo_df = patient_demo_df.sort_values(
@@ -136,7 +170,7 @@ def validate_df(raw_df: pandas.DataFrame, data_transformer: DataformTransformer)
     patient_demo_df = transform_patient_df(patient_demo_df, data_transformer)
     
     not_in_wave = patient_demo_df[~patient_demo_df["wave"].isin(VALID_WAVES)]
-    raw_df.loc[not_in_wave.index, "failure_reason"] = "not in waves 1-4"
+    raw_df.loc[not_in_wave.index, "failure_reason"] = "not in wave 5"
 
     data_transformer.null_failure(patient_demo_df, ["practiceCode"], raw_df, "no practice code")
     data_transformer.null_failure(patient_demo_df, ["mrn"], raw_df, "no mrn")
@@ -151,6 +185,20 @@ def validate_df(raw_df: pandas.DataFrame, data_transformer: DataformTransformer)
     return patient_demo_df, raw_df
 
     
+def build_provider_fax_lookup():
+    provider_files = glob.glob("raw_data/providers/*_ReferringDoctorByPractice.xlsx")
+    all_providers = []
+    for f in provider_files:
+        df = pd.read_excel(f, dtype=str, usecols=["NPI", "Fax Number"])
+        all_providers.append(df)
+    if not all_providers:
+        return {}
+    providers = pd.concat(all_providers, ignore_index=True)
+    providers = providers.dropna(subset=["NPI", "Fax Number"])
+    providers = providers.drop_duplicates(subset=["NPI"])
+    return dict(zip(providers["NPI"], providers["Fax Number"]))
+
+
 def transform_ingest_file():
     with open(
         RAW_PATIENT_DEMOGRAPHIC_FILE_PATH, "r", encoding="utf-8", errors="ignore"
@@ -174,6 +222,15 @@ def transform_ingest_file():
     ].index
     
     patient_demo_df = patient_demo_df.drop(failed_indices, errors='ignore')
+
+    fax_lookup = build_provider_fax_lookup()
+    wave5_mask = patient_demo_df["wave"].isin(VALID_WAVES)
+    missing_fax = patient_demo_df["referringProviderFax"].isna() | (patient_demo_df["referringProviderFax"] == "")
+    has_npi = patient_demo_df["referringProviderNpi"].notna() & (patient_demo_df["referringProviderNpi"] != "")
+    fill_mask = wave5_mask & missing_fax & has_npi
+    patient_demo_df.loc[fill_mask, "referringProviderFax"] = patient_demo_df.loc[fill_mask, "referringProviderNpi"].map(fax_lookup)
+    print(f"Filled {fill_mask.sum() - patient_demo_df.loc[fill_mask, 'referringProviderFax'].isna().sum()} referring provider fax numbers from provider files")
+
     patient_demo_df = data_transformer.merge(
         patient_demo_df,
         "mrn",
@@ -185,6 +242,7 @@ def transform_ingest_file():
             "attendingProviderLastName",
             "attendingProviderMiddleName",
             "attendingProviderPhone",
+            "attendingProviderFax",
             "attendingProviderAddressLine1",
             "attendingProviderAddressLine2",
             "attendingProviderCity",
@@ -196,6 +254,7 @@ def transform_ingest_file():
             "referringProviderLastName",
             "referringProviderMiddleName",
             "referringProviderPhone",
+            "referringProviderFax",
             "referringProviderAddressLine1",
             "referringProviderAddressLine2",
             "referringProviderCity",
@@ -207,6 +266,7 @@ def transform_ingest_file():
             "primaryProviderLastName",
             "primaryProviderMiddleName",
             "primaryProviderPhone",
+            "primaryProviderFax",
             "primaryProviderAddressLine1",
             "primaryProviderAddressLine2",
             "primaryProviderCity",
@@ -215,6 +275,7 @@ def transform_ingest_file():
             "primaryProviderCountry",
         ],
     )
+    patient_demo_df["wave"] = patient_demo_df["practiceCode"].apply(get_priority_wave)
     patient_demo_df, _ = group_duplicates_limited(patient_demo_df)
 
     data_transformer.write_chunks(patient_demo_df, 1)
